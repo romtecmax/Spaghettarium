@@ -10,7 +10,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .autofill import generate_autofill_script
+
 log = logging.getLogger(__name__)
+
+
+def _inject_gh_path(autofill_script: Path, gh_file_path: str):
+    """Prepend a GH_FILE variable to the autofill script."""
+    content = autofill_script.read_text(encoding="utf-8")
+    # Replace the placeholder at the top
+    content = f'GH_FILE = r"{gh_file_path}"\n' + content
+    autofill_script.write_text(content, encoding="utf-8")
 
 # Standard Rhino install locations (checked in order)
 _RHINO_PATHS = [
@@ -99,12 +109,36 @@ def launch_in_grasshopper(
     else:
         warnings.append("Yak.exe not found — skipping plugin installation")
 
+    # --- Generate autofill script ---
+    try:
+        autofill_path = generate_autofill_script()
+        steps.append("Generated autofill script for empty inputs")
+    except Exception as e:
+        autofill_path = None
+        warnings.append(f"Could not generate autofill script: {e}")
+
     # --- Open in Rhino/Grasshopper ---
     try:
-        subprocess.Popen(
-            [str(rhino_exe), str(gh_file)],
-        )
-        steps.append(f"Opened {gh_file.name} in Rhino")
+        if autofill_path:
+            # Inject the GH file path into the autofill script so it can open it itself
+            _inject_gh_path(autofill_path, str(gh_file))
+
+            import tempfile
+            bat_path = Path(tempfile.gettempdir()) / "spaghettarium_launch.bat"
+            bat_content = (
+                f'@echo off\r\n'
+                f'start "" "{rhino_exe}" '
+                f'/nosplash '
+                f'/runscript="_-RunPythonScript ""{autofill_path}"""\r\n'
+            )
+            bat_path.write_text(bat_content, encoding="utf-8")
+            subprocess.Popen([str(bat_path)], shell=True)
+            steps.append(f"Opened {gh_file.name} in Rhino with auto-fill enabled")
+        else:
+            subprocess.Popen(
+                [str(rhino_exe), str(gh_file)],
+            )
+            steps.append(f"Opened {gh_file.name} in Rhino")
     except Exception as e:
         return {
             "success": False,
