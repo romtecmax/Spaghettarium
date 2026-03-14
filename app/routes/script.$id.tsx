@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { ChatPanel } from "~/components/ChatPanel";
 import type { Route } from "./+types/script.$id";
 import { runQuery } from "~/server/db.server";
 
@@ -254,99 +255,6 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
   );
 }
 
-// ─── Chat Panel ──────────────────────────────────────────────────────────────
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
-
-function ChatPanel({ scriptContext }: { scriptContext: string }) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  async function sendMessage(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-
-    const userMsg: Message = { role: "user", content: input.trim() };
-    const next = [...messages, userMsg];
-    setMessages(next);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, scriptContext }),
-      });
-      const data = (await res.json()) as { reply?: string; error?: string };
-      const content = data.reply ?? data.error ?? "No response.";
-      setMessages([...next, { role: "assistant", content }]);
-    } catch {
-      setMessages([...next, { role: "assistant", content: "Error: could not reach the agent." }]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col h-full min-h-96">
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 text-sm font-medium">
-        Ask about this script
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-        {messages.length === 0 && (
-          <p className="text-sm text-gray-400 dark:text-gray-600">
-            Ask anything about this script or find related ones in the library…
-          </p>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-            <div
-              className={
-                m.role === "user"
-                  ? "max-w-[80%] rounded-lg px-3 py-2 text-sm bg-blue-600 text-white"
-                  : "max-w-[80%] rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 whitespace-pre-wrap"
-              }
-            >
-              {m.content}
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-400">
-              Thinking…
-            </div>
-          </div>
-        )}
-      </div>
-
-      <form onSubmit={sendMessage} className="p-3 border-t border-gray-200 dark:border-gray-800 flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask a question…"
-          disabled={loading}
-          className="flex-1 text-sm rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="text-sm rounded-md bg-blue-600 text-white px-4 py-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Send
-        </button>
-      </form>
-    </div>
-  );
-}
-
 // ─── Category colors ─────────────────────────────────────────────────────────
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -525,15 +433,19 @@ export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
 
         {/* ── Right: Chat Interface ── */}
         <div className="lg:col-span-1">
-          <ChatPanel scriptContext={[
-            `File: ${script.fileName}`,
-            script.category ? `Category: ${script.category}` : null,
-            script.description ? `Description: ${script.description}` : null,
-            script.tags?.length ? `Tags: ${script.tags.join(", ")}` : null,
-            script.inputs?.length ? `Inputs: ${script.inputs.join(", ")}` : null,
-            script.outputs?.length ? `Outputs: ${script.outputs.join(", ")}` : null,
-            script.flow ? `Flow: ${script.flow}` : null,
-          ].filter(Boolean).join("\n")} />
+          <ChatPanel
+            title="Ask about this script"
+            placeholder="Ask anything about this script or find related ones…"
+            scriptContext={[
+              `File: ${script.fileName}`,
+              script.category ? `Category: ${script.category}` : null,
+              script.description ? `Description: ${script.description}` : null,
+              script.tags?.length ? `Tags: ${script.tags.join(", ")}` : null,
+              script.inputs?.length ? `Inputs: ${script.inputs.join(", ")}` : null,
+              script.outputs?.length ? `Outputs: ${script.outputs.join(", ")}` : null,
+              script.flow ? `Flow: ${script.flow}` : null,
+            ].filter(Boolean).join("\n")}
+          />
         </div>
       </div>
     </main>

@@ -2,6 +2,7 @@ import { Link, useFetcher } from "react-router";
 import type { Route } from "./+types/home";
 import { runQuery } from "~/server/db.server";
 import { searchScripts, type SearchResultItem } from "~/server/search.server";
+import { ChatPanel } from "~/components/ChatPanel";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Spaghettarium" }];
@@ -202,68 +203,130 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         Welcome to the Spaghettarium
       </h1>
 
-      {/* Filter bar */}
-      <div className="mb-4 space-y-2">
-        {/* Categories */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Category:</span>
-          <Link
-            to={buildQuery(searchParams, { category: null })}
-            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-              !activeCategory
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
-            }`}
+      {/* Search bar */}
+      <fetcher.Form method="post" className="mb-4 flex gap-2">
+        <input
+          name="q"
+          className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder={'Search scripts by description… e.g. "voronoi nesting"'}
+          defaultValue={searchQuery ?? ""}
+        />
+        {searchResults && (
+          <button
+            type="button"
+            onClick={() => fetcher.submit(null, { method: "post", action: "/?index" })}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            All
-          </Link>
-          {categories.map((c) => (
+            ✕
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={isSearching}
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isSearching ? "…" : "Search"}
+        </button>
+      </fetcher.Form>
+
+      {/* Filter bar — hidden while search results are shown */}
+      {!searchResults && (
+        <div className="mb-4 space-y-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Category:</span>
             <Link
-              key={c.category}
-              to={buildQuery(searchParams, { category: c.category })}
+              to={buildQuery(searchParams, { category: null })}
               className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                activeCategory === c.category
+                !activeCategory
                   ? "bg-blue-600 text-white"
                   : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
               }`}
             >
-              {c.category} ({c.count})
+              All
             </Link>
-          ))}
-        </div>
-
-        {/* Tags */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Tags:</span>
-          {activeTag && (
-            <Link
-              to={buildQuery(searchParams, { tag: null })}
-              className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-600 text-white"
-            >
-              {activeTag} ✕
-            </Link>
-          )}
-          {topTags
-            .filter((t) => t.tag !== activeTag)
-            .slice(0, 15)
-            .map((t) => (
+            {categories.map((c) => (
               <Link
-                key={t.tag}
-                to={buildQuery(searchParams, { tag: t.tag })}
-                className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                key={c.category}
+                to={buildQuery(searchParams, { category: c.category })}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                  activeCategory === c.category
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                }`}
               >
-                {t.tag}
+                {c.category} ({c.count})
               </Link>
             ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Tags:</span>
+            {activeTag && (
+              <Link
+                to={buildQuery(searchParams, { tag: null })}
+                className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-600 text-white"
+              >
+                {activeTag} ✕
+              </Link>
+            )}
+            {topTags
+              .filter((t) => t.tag !== activeTag)
+              .slice(0, 15)
+              .map((t) => (
+                <Link
+                  key={t.tag}
+                  to={buildQuery(searchParams, { tag: t.tag })}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  {t.tag}
+                </Link>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Two-column layout */}
       <div className="grid grid-cols-3 gap-6 flex-1 min-h-0">
 
-        {/* Library — 2/3 */}
+        {/* Library / Search results — 2/3 */}
         <div className="col-span-2 overflow-y-auto min-h-0">
-          {scripts.length === 0 ? (
+          {searchError ? (
+            <p className="text-sm text-red-500">{searchError}</p>
+          ) : searchResults ? (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for &ldquo;{searchQuery}&rdquo;
+              </p>
+              {searchResults.length === 0 ? (
+                <p className="text-sm text-gray-500">No matching scripts found.</p>
+              ) : (
+                searchResults.map((r) => (
+                  <div
+                    key={r.version_id}
+                    className="rounded-lg border border-gray-100 dark:border-gray-800 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  >
+                    <Link
+                      to={`/script/${r.version_id}`}
+                      className="font-medium text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      {r.file_name ?? r.version_id}
+                    </Link>
+                    {r.category && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                        {r.category}
+                      </span>
+                    )}
+                    {r.description && (
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{r.description}</p>
+                    )}
+                    {r.match_explanation && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">{r.match_explanation}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          ) : scripts.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400">No scripts match the current filters.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
@@ -332,83 +395,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           )}
         </div>
 
-        {/* Search panel — 1/3 */}
+        {/* Chat panel — 1/3 */}
         <div className="col-span-1 flex flex-col min-h-0">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col flex-1 overflow-hidden">
-            {/* Results area */}
-            <div className="flex-1 overflow-y-auto px-4 py-4">
-              {isSearching ? (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-sm text-gray-400 dark:text-gray-500 animate-pulse">Searching...</p>
-                </div>
-              ) : searchError ? (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-sm text-red-500">{searchError}</p>
-                </div>
-              ) : searchResults && searchResults.length > 0 ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                    {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for "{searchQuery}"
-                  </p>
-                  {searchResults.map((r) => (
-                    <div
-                      key={r.version_id}
-                      className="rounded-lg border border-gray-100 dark:border-gray-800 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                    >
-                      <Link
-                        to={`/script/${r.version_id}`}
-                        className="font-medium text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        {r.file_name ?? r.version_id}
-                      </Link>
-                      {r.category && (
-                        <span className="ml-2 px-1.5 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                          {r.category}
-                        </span>
-                      )}
-                      {r.description && (
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
-                          {r.description}
-                        </p>
-                      )}
-                      {r.match_explanation && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">
-                          {r.match_explanation}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : searchResults && searchResults.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-sm text-gray-400 dark:text-gray-500">No results found for "{searchQuery}"</p>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-sm text-gray-400 dark:text-gray-600">
-                    Ask me to find Grasshopper scripts...
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Search input */}
-            <fetcher.Form method="post" className="border-t border-gray-100 dark:border-gray-800 px-4 py-3 flex gap-2">
-              <input
-                name="q"
-                className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Search scripts... e.g. &quot;voronoi nesting&quot;"
-                defaultValue={searchQuery ?? ""}
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
-                disabled={isSearching}
-              >
-                {isSearching ? "..." : "Send"}
-              </button>
-            </fetcher.Form>
-          </div>
+          <ChatPanel
+            title="Ask the library"
+            placeholder="Ask me to find Grasshopper scripts…"
+          />
         </div>
 
       </div>
