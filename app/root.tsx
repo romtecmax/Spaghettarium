@@ -44,10 +44,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <>
+    <div className="h-full flex flex-col overflow-hidden">
       <Nav />
-      <Outlet />
-    </>
+      <div className="flex-1 overflow-hidden">
+        <Outlet />
+      </div>
+    </div>
   );
 }
 

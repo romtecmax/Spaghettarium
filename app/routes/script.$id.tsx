@@ -202,7 +202,7 @@ export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
   }
 
   return (
-    <main className="container mx-auto px-6 py-8">
+    <main className="container mx-auto px-6 py-8 h-full overflow-y-auto">
       {/* Breadcrumb */}
       <div className="mb-6">
         <Link to="/" className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-gray-100">
