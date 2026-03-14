@@ -24,6 +24,8 @@ interface ScriptDetails {
 interface PluginRow {
   pluginName: string;
   pluginAuthor: string;
+  pluginId: string;
+  pluginVersion: string;
 }
 
 interface ComponentNode {
@@ -72,7 +74,8 @@ export async function loader({ params }: Route.LoaderArgs) {
     runQuery<PluginRow>(`
       MATCH (pv:PluginVersion)-[:PluginVerToDocVer]->(d:DocumentVersion {VersionId: $versionId})
       MATCH (p:Plugin)-[:PluginToPluginVer]->(pv)
-      RETURN DISTINCT p.Name AS pluginName, p.Author AS pluginAuthor
+      RETURN DISTINCT p.Name AS pluginName, p.Author AS pluginAuthor,
+             p.PluginId AS pluginId, pv.Version AS pluginVersion
       ORDER BY p.Name
     `, { versionId }),
 
@@ -285,6 +288,27 @@ export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
 
   const categoryColor = CATEGORY_COLORS[script.category ?? ""] ?? CATEGORY_COLORS.other;
 
+  const [launching, setLaunching] = useState(false);
+  const [launchResult, setLaunchResult] = useState<{ success: boolean; steps?: string[]; warnings?: string[]; error?: string } | null>(null);
+
+  async function handleLaunch() {
+    setLaunching(true);
+    setLaunchResult(null);
+    try {
+      const res = await fetch(`http://localhost:8000/api/scripts/${script.versionId}/launch`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setLaunchResult({ success: false, error: data.detail || "Launch failed" });
+      } else {
+        setLaunchResult(data);
+      }
+    } catch (e) {
+      setLaunchResult({ success: false, error: "Cannot reach backend. Is it running on port 8000?" });
+    } finally {
+      setLaunching(false);
+    }
+  }
+
   return (
     <main className="container mx-auto px-6 py-8 h-full overflow-y-auto">
       {/* Breadcrumb */}
@@ -292,7 +316,53 @@ export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
         <Link to="/" className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-gray-100">
           ← Home
         </Link>
-        <h1 className="text-2xl font-bold mt-1">{script.fileName}</h1>
+        <div className="flex items-center gap-4 mt-1">
+          <h1 className="text-2xl font-bold">{script.fileName}</h1>
+          <button
+            onClick={handleLaunch}
+            disabled={launching}
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-60 text-white text-sm font-medium transition-colors"
+          >
+            {launching ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Launching...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Open in Grasshopper
+              </>
+            )}
+          </button>
+        </div>
+        {launchResult && (
+          <div className={`mt-3 p-3 rounded-lg text-sm ${launchResult.success ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"}`}>
+            {launchResult.success ? (
+              <>
+                <p className="font-medium text-green-700 dark:text-green-300">Launched successfully</p>
+                {(launchResult.steps ?? []).map((s, i) => (
+                  <p key={i} className="text-green-600 dark:text-green-400">{s}</p>
+                ))}
+                {(launchResult.warnings ?? []).length > 0 && (
+                  <div className="mt-1">
+                    {launchResult.warnings!.map((w, i) => (
+                      <p key={i} className="text-yellow-600 dark:text-yellow-400">{w}</p>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-red-700 dark:text-red-300">{launchResult.error}</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

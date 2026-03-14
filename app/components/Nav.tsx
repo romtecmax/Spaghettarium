@@ -2,6 +2,7 @@ import { NavLink } from "react-router";
 
 const links = [
   { to: "/analytics", label: "Analytics" },
+  { to: "/import", label: "Import" },
 ];
 
 export function Nav() {

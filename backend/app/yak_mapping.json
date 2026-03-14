@@ -1,0 +1,46 @@
+{
+  "mappings": [
+    {
+      "pluginId": "b9116316-c87d-4212-a382-bc40035939bb",
+      "pluginName": "ShapeDiver",
+      "yakPackage": "ShapeDiver",
+      "yakAvailable": true,
+      "notes": ""
+    },
+    {
+      "pluginId": "c8b9b5eb-5c25-419e-a91f-aceabcf22c35",
+      "pluginName": "CurveOffsetTools",
+      "yakPackage": null,
+      "yakAvailable": false,
+      "notes": "Internal ShapeDiver plugin, not publicly available on Yak"
+    },
+    {
+      "pluginId": "08bdcae0-d034-48dd-a145-24a9fcf3d3ff",
+      "pluginName": "Heteroptera",
+      "yakPackage": "Heteroptera",
+      "yakAvailable": true,
+      "notes": ""
+    },
+    {
+      "pluginId": "1c9de8a1-315f-4c56-af06-8f69fee80a7a",
+      "pluginName": "Pufferfish",
+      "yakPackage": "Pufferfish",
+      "yakAvailable": true,
+      "notes": ""
+    },
+    {
+      "pluginId": "5f86fa9f-c62b-50e8-157b-b454ef3e00fa",
+      "pluginName": "Human",
+      "yakPackage": "Human",
+      "yakAvailable": true,
+      "notes": ""
+    },
+    {
+      "pluginId": "6bb8ff08-9dd5-cccd-7191-72c85ccf8b6a",
+      "pluginName": "Kangaroo Components",
+      "yakPackage": null,
+      "yakAvailable": false,
+      "notes": "Bundled with Rhino 7+ (no separate install needed)"
+    }
+  ]
+}

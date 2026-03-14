@@ -2,21 +2,27 @@
 FastAPI application for Grasshopper Script Finder.
 """
 
+import json
 import os
 import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from neo4j import GraphDatabase
 from openai import OpenAI
+
+from pathlib import Path
 
 from .models import (
     SearchRequest, SearchResponse, ScriptResult,
     ScriptDetail, TagCount, CategoryCount,
 )
 from .search import interpret_query, search_neo4j, explain_results, get_query_embedding
+from .importer import get_job, start_pipeline, UPLOAD_DIR
+from .launcher import launch_in_grasshopper
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -28,6 +34,24 @@ NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
+# Directories where .gh/.ghx files may be stored
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+# Flat directories checked first (fast), then recursive roots searched as fallback
+GH_FILE_DIRS_FLAT = [
+    UPLOAD_DIR,
+    BACKEND_DIR / "data" / "scraped" / "gh_files",
+    BACKEND_DIR / "data" / "import" / "gh_files",
+    Path(os.environ.get("GH_FILES_DIR", BACKEND_DIR.parent.parent / "neo4j-grasshopper-graph" / "data" / "scraped" / "gh_files")),
+]
+# Root directories to search recursively if flat lookup fails
+GH_FILE_DIRS_RECURSIVE = [
+    Path(os.environ.get("GH_DATA_ROOT", BACKEND_DIR.parent.parent / "neo4j-grasshopper-graph" / "data")),
+    BACKEND_DIR / "data",
+]
+
+# Yak mapping file
+YAK_MAPPING_FILE = Path(__file__).resolve().parent / "yak_mapping.json"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,6 +59,46 @@ async def lifespan(app: FastAPI):
     app.state.neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
     app.state.openai_client = OpenAI(api_key=OPENAI_API_KEY)
     app.state.openai_model = OPENAI_MODEL
+
+    # Load Yak plugin mapping from JSON (manual overrides)
+    if YAK_MAPPING_FILE.exists():
+        with open(YAK_MAPPING_FILE) as f:
+            data = json.load(f)
+        yak_mapping = {m["pluginId"]: m for m in data["mappings"]}
+        log.info(f"Loaded {len(yak_mapping)} manual Yak plugin mappings")
+    else:
+        yak_mapping = {}
+        log.warning(f"Yak mapping file not found: {YAK_MAPPING_FILE}")
+
+    # Auto-populate from Neo4j: discover all plugins and merge
+    try:
+        with app.state.neo4j_driver.session() as session:
+            result = session.run("""
+                MATCH (p:Plugin)-[:PluginToPluginVer]->(pv:PluginVersion)
+                RETURN DISTINCT p.PluginId AS pluginId, p.Name AS pluginName,
+                       p.Author AS author, collect(DISTINCT pv.Version) AS versions
+            """)
+            new_count = 0
+            for record in result:
+                pid = record["pluginId"]
+                if pid and pid not in yak_mapping:
+                    yak_mapping[pid] = {
+                        "pluginId": pid,
+                        "pluginName": record["pluginName"] or "Unknown",
+                        "yakPackage": record["pluginName"],
+                        "yakAvailable": False,
+                        "notes": "Auto-discovered from Neo4j — verify Yak availability and set yakAvailable to true",
+                        "author": record["author"] or "",
+                        "versions": record["versions"] or [],
+                    }
+                    new_count += 1
+            if new_count:
+                log.info(f"Auto-discovered {new_count} unmapped plugins from Neo4j")
+    except Exception as e:
+        log.warning(f"Failed to auto-populate plugins from Neo4j: {e}")
+
+    app.state.yak_mapping = yak_mapping
+    log.info(f"Total Yak plugin mappings: {len(yak_mapping)}")
     log.info(f"Connected to Neo4j at {NEO4J_URI}")
     yield
     app.state.neo4j_driver.close()
@@ -247,3 +311,175 @@ def get_categories():
             ORDER BY count DESC
         """)
         return [CategoryCount(category=r["category"], count=r["count"]) for r in result]
+
+
+# ---------------------------------------------------------------------------
+# Launcher / file download
+# ---------------------------------------------------------------------------
+
+_gh_file_cache: dict[str, Path] = {}
+
+
+def _find_gh_file(file_name: str) -> Path | None:
+    """Look for a .gh/.ghx file — flat dirs first, then recursive search."""
+    if file_name in _gh_file_cache:
+        cached = _gh_file_cache[file_name]
+        if cached.is_file():
+            return cached
+
+    # Fast: check flat directories
+    for d in GH_FILE_DIRS_FLAT:
+        candidate = d / file_name
+        if candidate.is_file():
+            _gh_file_cache[file_name] = candidate
+            return candidate
+
+    # Slow fallback: recursive search through data roots
+    for root in GH_FILE_DIRS_RECURSIVE:
+        if not root.is_dir():
+            continue
+        for match in root.rglob(file_name):
+            if match.is_file():
+                _gh_file_cache[file_name] = match
+                return match
+
+    return None
+
+
+@app.get("/api/scripts/{version_id}/file")
+def download_script_file(version_id: str):
+    """Download the .gh/.ghx file for a script."""
+    driver = app.state.neo4j_driver
+    with driver.session() as session:
+        result = session.run(
+            "MATCH (d:DocumentVersion {VersionId: $vid}) RETURN d.FileName AS fileName",
+            vid=version_id,
+        )
+        record = result.single()
+    if not record or not record["fileName"]:
+        raise HTTPException(status_code=404, detail="Script not found")
+
+    file_name = record["fileName"]
+    path = _find_gh_file(file_name)
+    if not path:
+        raise HTTPException(status_code=404, detail=f"File not found locally: {file_name}")
+
+    return FileResponse(
+        path=str(path),
+        filename=file_name,
+        media_type="application/octet-stream",
+    )
+
+
+@app.post("/api/scripts/{version_id}/launch")
+def launch_script(version_id: str):
+    """Install required plugins via Yak and open the script in Rhino/Grasshopper."""
+    driver = app.state.neo4j_driver
+    with driver.session() as session:
+        result = session.run("""
+            MATCH (d:DocumentVersion {VersionId: $vid})
+            OPTIONAL MATCH (pv:PluginVersion)-[:PluginVerToDocVer]->(d)
+            RETURN d.FileName AS fileName,
+                   collect({pluginId: pv.PluginId, name: pv.Name, version: pv.Version}) AS plugins
+        """, vid=version_id)
+        record = result.single()
+
+    if not record or not record["fileName"]:
+        raise HTTPException(status_code=404, detail="Script not found")
+
+    file_name = record["fileName"]
+    gh_path = _find_gh_file(file_name)
+    if not gh_path:
+        raise HTTPException(status_code=404, detail=f"File not found locally: {file_name}")
+
+    plugins = [dict(p) for p in record["plugins"] if p.get("pluginId")]
+
+    result = launch_in_grasshopper(
+        gh_file=gh_path,
+        plugins=plugins,
+        yak_mapping=app.state.yak_mapping,
+    )
+
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return result
+
+
+@app.get("/api/yak-mapping")
+def get_yak_mapping():
+    """Return the current plugin-to-Yak mapping table."""
+    mappings = list(app.state.yak_mapping.values())
+    manual_count = sum(1 for m in mappings if "Auto-discovered" not in (m.get("notes") or ""))
+    auto_count = len(mappings) - manual_count
+    return {
+        "mappings": mappings,
+        "total": len(mappings),
+        "manual": manual_count,
+        "auto_discovered": auto_count,
+    }
+
+
+@app.put("/api/yak-mapping/{plugin_id}")
+def update_yak_mapping(plugin_id: str, update: dict):
+    """Update a single plugin's Yak mapping and persist to disk.
+
+    Body example: {"yakPackage": "Kangaroo2", "yakAvailable": true, "notes": ""}
+    """
+    if plugin_id not in app.state.yak_mapping:
+        raise HTTPException(status_code=404, detail="Plugin not found in mapping")
+
+    entry = app.state.yak_mapping[plugin_id]
+    for key in ("yakPackage", "yakAvailable", "notes"):
+        if key in update:
+            entry[key] = update[key]
+
+    # Persist manual mappings back to JSON
+    _save_yak_mapping(app.state.yak_mapping)
+    return entry
+
+
+def _save_yak_mapping(mapping: dict):
+    """Write the mapping table back to yak_mapping.json (only manually-curated entries)."""
+    # Save all entries (both manual and auto-discovered that have been updated)
+    data = {"mappings": list(mapping.values())}
+    with open(YAK_MAPPING_FILE, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+    log.info(f"Saved {len(data['mappings'])} Yak mappings to {YAK_MAPPING_FILE}")
+
+
+# ---------------------------------------------------------------------------
+# Import pipeline
+# ---------------------------------------------------------------------------
+
+@app.post("/api/import/upload")
+async def upload_and_import(files: list[UploadFile] = File(...)):
+    """Upload .gh/.ghx files and start the import pipeline."""
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    saved: list[Path] = []
+    for f in files:
+        if not f.filename:
+            continue
+        ext = Path(f.filename).suffix.lower()
+        if ext not in (".gh", ".ghx"):
+            continue
+        dest = UPLOAD_DIR / f.filename
+        content = await f.read()
+        dest.write_bytes(content)
+        saved.append(dest)
+
+    if not saved:
+        raise HTTPException(status_code=400, detail="No valid .gh/.ghx files provided")
+
+    try:
+        start_pipeline(saved)
+        return {"status": "started", "files": [p.name for p in saved]}
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.get("/api/import/status")
+def import_status():
+    """Get the current import pipeline status."""
+    return get_job().to_dict()
