@@ -1,5 +1,30 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import type Anthropic from "@anthropic-ai/sdk";
+
+const SCRIPT_LINK_SPLIT = /(\/script\/[0-9a-f-]+)/i;
+const SCRIPT_LINK_TEST = /^\/script\/[0-9a-f-]+$/i;
+
+function MessageContent({ text }: { text: string }) {
+  const parts = text.split(SCRIPT_LINK_SPLIT);
+  return (
+    <>
+      {parts.map((part, i) =>
+        SCRIPT_LINK_TEST.test(part) ? (
+          <Link
+            key={i}
+            to={part}
+            className="underline text-blue-300 hover:text-blue-100"
+          >
+            {part}
+          </Link>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
 
 interface Message {
   role: "user" | "assistant";
@@ -76,7 +101,11 @@ export function ChatPanel({
                   : "max-w-[80%] rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 whitespace-pre-wrap"
               }
             >
-              {m.content}
+              {m.role === "assistant" ? (
+                <MessageContent text={m.content} />
+              ) : (
+                m.content
+              )}
             </div>
           </div>
         ))}
