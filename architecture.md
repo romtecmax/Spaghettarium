@@ -1,12 +1,11 @@
 ```mermaid
 graph TD
     subgraph Pages["Pages (React Router)"]
-        LIB["/library<br/>Script Library"]
         SCRIPT["/script/:id<br/>Script Detail"]
         ANALYTICS["/analytics<br/>Analytics"]
     end
 
-    subgraph UI["React Components"]
+    subgraph UokI["React Components"]
         SL["Script List<br/>(paginated, sortable)"]
         SS["Script Search<br/>(text + filters)"]
         UP["Upload Pad<br/>(.gh file upload)"]

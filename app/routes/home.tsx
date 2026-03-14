@@ -136,7 +136,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const data = await searchScripts(query.trim());
+    const data = await searchScripts(query);
     return { query, results: data.results, error: null };
   } catch (e) {
     return {

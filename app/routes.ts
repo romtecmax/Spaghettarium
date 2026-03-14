@@ -4,4 +4,5 @@ export default [
   index("routes/home.tsx"),
   route("script/:id", "routes/script.$id.tsx"),
   route("analytics", "routes/analytics.tsx"),
+  route("api/chat", "routes/api.chat.ts"),
 ] satisfies RouteConfig;
