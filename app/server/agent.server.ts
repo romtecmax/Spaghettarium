@@ -7,7 +7,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const tools: Anthropic.Tool[] = [
   {
     name: "query_database",
-    description: `Execute a Cypher query against the Neo4j graph database to explore Grasshopper scripts, components, plugins, and their relationships.
+    description: `Execute a Cypher query against the Neo4j graph database to explore Grasshopper scripts, components, plugins, and their relationships. Please use LIMIT in the query to limit the number of results.
 
 Schema:
 - (:DocumentVersion {versionId, fileName, filePath, ai_description, ai_category, ai_tags, ai_flow, ai_inputs, ai_outputs, ai_confidence})
