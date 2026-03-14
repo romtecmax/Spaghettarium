@@ -1,0 +1,44 @@
+.DS_Store
+.env
+/node_modules/
+
+# React Router
+/.react-router/
+/build/
+
+npm-debug.log
+
+/website/build/
+node_modules/
+
+/examples/*/yarn.lock
+/examples/*/pnpm-lock.yaml
+/examples/*/dist
+/tutorial/dist
+/playground-local/
+/integration/playwright-report
+/integration/test-results
+
+# v5 build files
+/packages/*/cjs/
+/packages/*/esm/
+/packages/*/umd/
+
+# v6 build files
+/build/
+/packages/*/dist/
+/packages/*/LICENSE.md
+
+# v7 build files
+.react-router
+
+.wireit
+.eslintcache
+.tmp
+tsup.config.bundled_*.mjs
+build.utils.d.ts
+worker-configuration.d.ts
+/.env
+
+# v7 reference docs
+/public
