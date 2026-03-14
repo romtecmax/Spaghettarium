@@ -42,3 +42,11 @@ worker-configuration.d.ts
 
 # v7 reference docs
 /public
+
+# Backend — large data/binary folders
+/backend/data/
+/backend/SdGraphDbCli/
+/backend/SdGraphDbCli.zip
+/backend/aaa/
+/backend/__pycache__/
+/backend/app/__pycache__/
