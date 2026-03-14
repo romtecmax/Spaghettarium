@@ -20,13 +20,14 @@ interface ScriptRow {
 export async function loader() {
   const rows = await runQuery<ScriptRow>(`
     MATCH (d:DocumentVersion)
+    OPTIONAL MATCH (pv:PluginVersion)-[:PluginVerToDocVer]->(d)
+    OPTIONAL MATCH (p:Plugin)-[:PluginToPluginVer]->(pv)
     RETURN
       d.DocumentId  AS documentId,
       d.VersionId   AS versionId,
       d.FileName    AS fileName,
-      d.FileLastWriteTimeUtc AS updatedAt
-    ORDER BY d.fileName
-    LIMIT 100
+      toString(d.FileLastWriteTimeUtc) AS updatedAt,
+      collect(DISTINCT p.Name) AS plugins
   `);
 
   return { scripts: rows };
@@ -70,9 +71,9 @@ export default function Library({ loaderData }: Route.ComponentProps) {
                       {s.fileName ?? s.versionId}
                     </Link>
                   </td>
-                  {/* <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                     {s.plugins.filter(Boolean).join(", ") || "—"}
-                  </td> */}
+                  </td>
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-500">
                     {s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "—"}
                   </td>
