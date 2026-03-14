@@ -31,6 +31,7 @@ interface ComponentNode {
   componentName: string;
   pivotX: number | null;
   pivotY: number | null;
+  category: string | null;
 }
 
 interface WireEdge {
@@ -77,11 +78,13 @@ export async function loader({ params }: Route.LoaderArgs) {
 
     runQuery<ComponentNode>(`
       MATCH (ci:ComponentInstance {VersionId: $versionId})
+      OPTIONAL MATCH (cd:ComponentDefinition {ComponentGuid: ci.ComponentGuid})
       RETURN
         ci.InstanceGuid   AS instanceGuid,
         ci.ComponentName  AS componentName,
         ci.PivotX         AS pivotX,
-        ci.PivotY         AS pivotY
+        ci.PivotY         AS pivotY,
+        cd.ai_category    AS category
     `, { versionId }),
 
     runQuery<WireEdge>(`
@@ -101,10 +104,24 @@ const COMP_H = 60;
 const PADDING = 160;
 const SCALE = 1.8;
 
+const CATEGORY_FILL: Record<string, { fill: string; stroke: string }> = {
+  geometry:     { fill: "#bbf7d0", stroke: "#4ade80" },
+  mesh:         { fill: "#e9d5ff", stroke: "#a78bfa" },
+  data:         { fill: "#fed7aa", stroke: "#fb923c" },
+  display:      { fill: "#fbcfe8", stroke: "#f472b6" },
+  interop:      { fill: "#a5f3fc", stroke: "#22d3ee" },
+  analysis:     { fill: "#c7d2fe", stroke: "#818cf8" },
+  optimization: { fill: "#fde68a", stroke: "#fbbf24" },
+  fabrication:  { fill: "#fecaca", stroke: "#f87171" },
+  simulation:   { fill: "#99f6e4", stroke: "#2dd4bf" },
+  utility:      { fill: "#e5e7eb", stroke: "#9ca3af" },
+};
+
 function GraphPreview({ components, wires }: { components: ComponentNode[]; wires: WireEdge[] }) {
   const [open, setOpen] = useState(false);
 
   const positioned = components.filter((c) => c.pivotX != null && c.pivotY != null);
+  const activeCategories = [...new Set(positioned.map((c) => c.category).filter(Boolean))] as string[];
 
   if (positioned.length === 0) {
     return (
@@ -143,18 +160,19 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
         const isPanel  = c.componentName === "Panel";
         const h = isSlider ? COMP_H * 0.3 : isPanel ? COMP_W * (3 / 4) : COMP_H;
         const w = isSlider ? COMP_W * 1.5 : COMP_W;
+        const cat = CATEGORY_FILL[c.category ?? ""] ?? { fill: "#9ca3af", stroke: "#6b7280" };
         return (
           <g key={c.instanceGuid} transform={`translate(${c.pivotX - w / 2}, ${c.pivotY - h / 2})`}>
             {isSlider ? (
               <>
-                <rect width={w} height={h} rx={2} fill="#e5e7eb" stroke="#d1d5db" strokeWidth={0.75} />
-                <rect x={0} width={w * 0.22} height={h} rx={2} fill="#9ca3af" />
-                <rect x={w * 0.22 * 0.6} width={w * 0.22 * 0.4} height={h} fill="#9ca3af" />
+                <rect width={w} height={h} rx={2} fill={cat.fill} stroke={cat.stroke} strokeWidth={0.75} />
+                <rect x={0} width={w * 0.22} height={h} rx={2} fill={cat.stroke} />
+                <rect x={w * 0.22 * 0.6} width={w * 0.22 * 0.4} height={h} fill={cat.stroke} />
               </>
             ) : isPanel ? (
               <rect width={w} height={h} rx={3} fill="#fde047" stroke="#facc15" strokeWidth={0.75} />
             ) : (
-              <rect width={w} height={h} rx={3} fill="#9ca3af" stroke="#6b7280" strokeWidth={0.75} />
+              <rect width={w} height={h} rx={3} fill={cat.fill} stroke={cat.stroke} strokeWidth={0.75} />
             )}
             <text x={w / 2} y={h / 2} dominantBaseline="middle" textAnchor="middle"
               fill="#1f2937" fontSize={8} fontFamily="monospace">
@@ -173,6 +191,24 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
         style={{ background: "#faf8f4", maxHeight: "700px" }}>
         {svgContent}
       </svg>
+
+      {activeCategories.length > 0 && (
+        <div className="flex flex-wrap gap-3 mt-2">
+          {activeCategories.sort().map((cat) => {
+            const colors = CATEGORY_FILL[cat] ?? CATEGORY_FILL.utility;
+            return (
+              <div key={cat} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                <span className="inline-block w-3 h-3 rounded-sm border" style={{ background: colors.fill, borderColor: colors.stroke }} />
+                {cat}
+              </div>
+            );
+          })}
+          <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+            <span className="inline-block w-3 h-3 rounded-sm border" style={{ background: "#9ca3af", borderColor: "#6b7280" }} />
+            unknown
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 overflow-auto" onClick={() => setOpen(false)}>
