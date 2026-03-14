@@ -1,13 +1,12 @@
 import { NavLink } from "react-router";
 
 const links = [
-  { to: "/library", label: "Library" },
   { to: "/analytics", label: "Analytics" },
 ];
 
 export function Nav() {
   return (
-    <nav className="flex items-center gap-6 px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+    <nav className="flex items-center gap-6 px-6 py-4">
       <NavLink to="/" className="font-bold text-lg tracking-tight mr-4">
         Spaghettarium
       </NavLink>
