@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { ChatPanel } from "~/components/ChatPanel";
 import type { Route } from "./+types/script.$id";
 import { runQuery } from "~/server/db.server";
 
@@ -502,9 +503,19 @@ export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
 
         {/* ── Right: Chat Interface ── */}
         <div className="lg:col-span-1">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-800 h-full min-h-64 flex items-center justify-center text-gray-400 dark:text-gray-600 text-sm">
-            Chat interface — coming soon
-          </div>
+          <ChatPanel
+            title="Ask about this script"
+            placeholder="Ask anything about this script or find related ones…"
+            scriptContext={[
+              `File: ${script.fileName}`,
+              script.category ? `Category: ${script.category}` : null,
+              script.description ? `Description: ${script.description}` : null,
+              script.tags?.length ? `Tags: ${script.tags.join(", ")}` : null,
+              script.inputs?.length ? `Inputs: ${script.inputs.join(", ")}` : null,
+              script.outputs?.length ? `Outputs: ${script.outputs.join(", ")}` : null,
+              script.flow ? `Flow: ${script.flow}` : null,
+            ].filter(Boolean).join("\n")}
+          />
         </div>
       </div>
     </main>

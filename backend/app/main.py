@@ -28,9 +28,10 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://127.0.0.1:7687")
-NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
+NEO4J_URI = os.environ["NEO4J_URI"]
+NEO4J_USER = os.environ.get("NEO4J_USERNAME", "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
+logging.info(f"{NEO4J_URI}, {NEO4J_PASSWORD}, {NEO4J_USER}")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -124,6 +125,10 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@app.get("/")
+def index():
+    return health_check()
 
 @app.get("/api/health")
 def health_check():

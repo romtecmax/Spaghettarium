@@ -29,9 +29,8 @@ export async function runQuery<T = unknown>(
     }
   const session = getDriver().session({ database: DATABASE });
   try {
-    console.log(`querying for ${cypher}`)
+    //console.log(`querying for ${cypher}`)
     const result = await session.run(cypher, params);
-    console.log(`Result: ${JSON.stringify(result)}`)
     return result.records.map((r) => {
       const obj = r.toObject();
       // Convert Neo4j Integer objects ({low, high}) to plain JS numbers
