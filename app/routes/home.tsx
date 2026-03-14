@@ -87,7 +87,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
-  const [scripts, categories, topTags] = await Promise.all([
+  const [scripts, categories, topTags, counts] = await Promise.all([
     runQuery<ScriptRow>(`
       MATCH (d:DocumentVersion)
       ${whereStr}
@@ -122,9 +122,19 @@ export async function loader({ request }: Route.LoaderArgs) {
       ORDER BY count DESC
       LIMIT 20
     `),
+
+    runQuery<{ scripts: number; components: number; plugins: number }>(`
+      MATCH (d:DocumentVersion)
+      WITH count(d) AS scripts
+      OPTIONAL MATCH (ci:ComponentInstance)
+      WITH scripts, count(ci) AS components
+      OPTIONAL MATCH (p:Plugin)
+      RETURN scripts, components, count(p) AS plugins
+    `),
   ]);
 
-  return { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag };
+  const stats = counts[0] ?? { scripts: 0, components: 0, plugins: 0 };
+  return { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag, stats };
 }
 
 // ─── Action (search) ─────────────────────────────────────────────────────────
@@ -183,7 +193,7 @@ function SortableHeader({
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag } = loaderData;
+  const { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag, stats } = loaderData;
   const searchParams = new URLSearchParams();
   if (sortKey !== "fileName") searchParams.set("sort", sortKey);
   if (sortDir !== "asc") searchParams.set("dir", sortDir);
@@ -197,18 +207,89 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const isSearching = fetcher.state === "submitting";
 
   return (
-    <div className="container mx-auto px-6 pt-6 pb-4 flex flex-col h-full overflow-hidden">
+    <div className="container mx-auto px-6 pt-10 pb-4 flex flex-col h-full overflow-hidden">
       {/* Title */}
-      <h1 className="text-5xl h-30 my-6 font-bold text-center bg-linear-to-r from-blue-600 via-green-500 to-indigo-400 text-transparent bg-clip-text animate-pulse">
+      <h1 className="text-5xl h-30 font-bold text-center bg-linear-to-r from-blue-600 via-green-500 to-indigo-400 text-transparent bg-clip-text animate-pulse">
         Welcome to the Spaghettarium
       </h1>
+
+      {/* Stats cards */}
+      <div className="grid grid-cols-3 gap-4 mb-2">
+        {[
+          { label: "Scripts", value: stats.scripts },
+          { label: "Components", value: stats.components },
+          { label: "Plugins", value: stats.plugins },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 text-center">
+            <p className="text-2xl font-bold">{value.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      
+      {/* Filter bar — hidden while search results are shown */}
+      {!searchResults && (
+        <div className="mb-4 space-y-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1 shrink-0">Category:</span>
+            <Link
+              to={buildQuery(searchParams, { category: null })}
+              className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                !activeCategory
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+              }`}
+            >
+              All
+            </Link>
+            {categories.map((c) => (
+              <Link
+                key={c.category}
+                to={buildQuery(searchParams, { category: c.category })}
+                className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                  activeCategory === c.category
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                }`}
+              >
+                {c.category} ({c.count})
+              </Link>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1 shrink-0">Tags:</span>
+            {activeTag && (
+              <Link
+                to={buildQuery(searchParams, { tag: null })}
+                className="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-600 text-white whitespace-nowrap"
+              >
+                {activeTag} ✕
+              </Link>
+            )}
+            {topTags
+              .filter((t) => t.tag !== activeTag)
+              .slice(0, 15)
+              .map((t) => (
+                <Link
+                  key={t.tag}
+                  to={buildQuery(searchParams, { tag: t.tag })}
+                  className="shrink-0 px-1.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  {t.tag}
+                </Link>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Search bar */}
       <fetcher.Form method="post" className="mb-4 flex gap-2">
         <input
           name="q"
           className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder={'Search scripts by description… e.g. "voronoi nesting"'}
+          placeholder={'Semantic Search...'}
           defaultValue={searchQuery ?? ""}
         />
         {searchResults && (
@@ -229,61 +310,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </button>
       </fetcher.Form>
 
-      {/* Filter bar — hidden while search results are shown */}
-      {!searchResults && (
-        <div className="mb-4 space-y-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Category:</span>
-            <Link
-              to={buildQuery(searchParams, { category: null })}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                !activeCategory
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
-              }`}
-            >
-              All
-            </Link>
-            {categories.map((c) => (
-              <Link
-                key={c.category}
-                to={buildQuery(searchParams, { category: c.category })}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                  activeCategory === c.category
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
-                }`}
-              >
-                {c.category} ({c.count})
-              </Link>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Tags:</span>
-            {activeTag && (
-              <Link
-                to={buildQuery(searchParams, { tag: null })}
-                className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-600 text-white"
-              >
-                {activeTag} ✕
-              </Link>
-            )}
-            {topTags
-              .filter((t) => t.tag !== activeTag)
-              .slice(0, 15)
-              .map((t) => (
-                <Link
-                  key={t.tag}
-                  to={buildQuery(searchParams, { tag: t.tag })}
-                  className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                >
-                  {t.tag}
-                </Link>
-              ))}
-          </div>
-        </div>
-      )}
 
       {/* Two-column layout */}
       <div className="grid grid-cols-3 gap-6 flex-1 min-h-0">
