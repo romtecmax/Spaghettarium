@@ -12,13 +12,31 @@ export async function action({ request }: ActionFunctionArgs) {
     scriptContext?: string;
   };
 
-  try {
-    const reply = await runAgent(body.messages, body.scriptContext);
-    return Response.json({ reply });
-  } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : "Agent error" },
-      { status: 500 }
-    );
-  }
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: object) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+
+      try {
+        const reply = await runAgent(body.messages, body.scriptContext, (tool) => {
+          send({ type: "tool_call", tool });
+        });
+        send({ type: "done", reply });
+      } catch (err) {
+        send({ type: "error", error: err instanceof Error ? err.message : "Agent error" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }

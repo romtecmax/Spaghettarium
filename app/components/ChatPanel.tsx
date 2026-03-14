@@ -2,6 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 import type Anthropic from "@anthropic-ai/sdk";
 
+const TOOL_LABELS: Record<string, string> = {
+  query_database: "Querying database…",
+  search_documents: "Searching scripts…",
+};
+
 const SCRIPT_LINK_SPLIT = /(\/script\/[0-9a-f-]+)/i;
 const SCRIPT_LINK_TEST = /^\/script\/[0-9a-f-]+$/i;
 
@@ -45,6 +50,7 @@ export function ChatPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
 
   async function sendMessage(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,14 +72,40 @@ export function ChatPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: apiMessages, scriptContext }),
       });
-      const data = (await res.json()) as { reply?: string; error?: string };
-      const content = data.reply ?? data.error ?? "No response.";
-      setMessages([...next, { role: "assistant", content }]);
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const event = JSON.parse(line.slice(6)) as
+            | { type: "tool_call"; tool: string }
+            | { type: "done"; reply: string }
+            | { type: "error"; error: string };
+          if (event.type === "tool_call") {
+            setToolStatus(TOOL_LABELS[event.tool] ?? event.tool);
+          } else if (event.type === "done") {
+            setMessages([...next, { role: "assistant", content: event.reply }]);
+            setToolStatus(null);
+          } else if (event.type === "error") {
+            setMessages([...next, { role: "assistant", content: `Error: ${event.error}` }]);
+            setToolStatus(null);
+          }
+        }
+      }
     } catch {
       setMessages([
         ...next,
         { role: "assistant", content: "Error: could not reach the agent." },
       ]);
+      setToolStatus(null);
     } finally {
       setLoading(false);
     }
@@ -111,8 +143,9 @@ export function ChatPanel({
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-400">
-              Thinking…
+            <div className="rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-400 flex items-center gap-2">
+              <span className="animate-pulse">⬤</span>
+              {toolStatus ?? "Thinking…"}
             </div>
           </div>
         )}
