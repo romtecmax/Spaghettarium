@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import type { Route } from "./+types/script.$id";
 import { runQuery } from "~/server/db.server";
@@ -82,10 +83,13 @@ export async function loader({ params }: Route.LoaderArgs) {
 // ─── Graph Preview ────────────────────────────────────────────────────────────
 
 const COMP_W = 100;
-const COMP_H = 26;
-const PADDING = 60;
+const COMP_H = 60;
+const PADDING = 160;
+const SCALE = 1.8;
 
 function GraphPreview({ components, wires }: { components: ComponentNode[]; wires: WireEdge[] }) {
+  const [open, setOpen] = useState(false);
+
   const positioned = components.filter((c) => c.pivotX != null && c.pivotY != null);
 
   if (positioned.length === 0) {
@@ -96,66 +100,91 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
     );
   }
 
-  const xs = positioned.map((c) => c.pivotX!);
-  const ys = positioned.map((c) => c.pivotY!);
+  const scaled = positioned.map((c) => ({ ...c, pivotX: c.pivotX! * SCALE, pivotY: c.pivotY! * SCALE }));
+  const xs = scaled.map((c) => c.pivotX);
+  const ys = scaled.map((c) => c.pivotY);
   const minX = Math.min(...xs) - COMP_W / 2 - PADDING;
   const minY = Math.min(...ys) - COMP_H / 2 - PADDING;
   const maxX = Math.max(...xs) + COMP_W / 2 + PADDING;
   const maxY = Math.max(...ys) + COMP_H / 2 + PADDING;
   const vbWidth = maxX - minX;
   const vbHeight = maxY - minY;
+  const viewBox = `${minX} ${minY} ${vbWidth} ${vbHeight}`;
 
-  const compMap = new Map(positioned.map((c) => [c.instanceGuid, c]));
+  const compMap = new Map(scaled.map((c) => [c.instanceGuid, c]));
 
-  return (
-    <svg
-      viewBox={`${minX} ${minY} ${vbWidth} ${vbHeight}`}
-      className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-950"
-      style={{ maxHeight: "480px" }}
-    >
-      {/* Wires */}
+  const svgContent = (
+    <>
       {wires.map((w, i) => {
         const src = compMap.get(w.from);
         const tgt = compMap.get(w.to);
         if (!src || !tgt) return null;
         return (
-          <line
-            key={i}
-            x1={src.pivotX!}
-            y1={src.pivotY!}
-            x2={tgt.pivotX!}
-            y2={tgt.pivotY!}
-            stroke="#475569"
-            strokeWidth={1.5}
-          />
+          <line key={i} x1={src.pivotX} y1={src.pivotY} x2={tgt.pivotX} y2={tgt.pivotY}
+            stroke="#000000" strokeWidth={1.5} />
         );
       })}
+      {scaled.map((c) => {
+        const isSlider = c.componentName === "Number Slider";
+        const isPanel  = c.componentName === "Panel";
+        const h = isSlider ? COMP_H * 0.3 : isPanel ? COMP_W * (3 / 4) : COMP_H;
+        const w = isSlider ? COMP_W * 1.5 : COMP_W;
+        return (
+          <g key={c.instanceGuid} transform={`translate(${c.pivotX - w / 2}, ${c.pivotY - h / 2})`}>
+            {isSlider ? (
+              <>
+                {/* Full track — light */}
 
-      {/* Component nodes */}
-      {positioned.map((c) => (
-        <g key={c.instanceGuid} transform={`translate(${c.pivotX! - COMP_W / 2}, ${c.pivotY! - COMP_H / 2})`}>
-          <rect
-            width={COMP_W}
-            height={COMP_H}
-            rx={3}
-            fill="#1e293b"
-            stroke="#334155"
-            strokeWidth={0.75}
-          />
-          <text
-            x={COMP_W / 2}
-            y={COMP_H / 2}
-            dominantBaseline="middle"
-            textAnchor="middle"
-            fill="#94a3b8"
-            fontSize={8}
-            fontFamily="monospace"
+                <rect width={w} height={h} rx={2} fill="#e5e7eb" stroke="#d1d5db" strokeWidth={0.75} />
+                {/* Left label block — darker, square off the right edge */}
+                <rect x={0} width={w * 0.22} height={h} rx={2} fill="#9ca3af" />
+                <rect x={w * 0.22 * 0.6} width={w * 0.22 * 0.4} height={h} fill="#9ca3af" />
+              </>
+            ) : isPanel ? (
+              <rect width={w} height={h} rx={3} fill="#fde047" stroke="#facc15" strokeWidth={0.75} />
+            ) : (
+              <rect width={w} height={h} rx={3} fill="#9ca3af" stroke="#6b7280" strokeWidth={0.75} />
+            )}
+            <text x={w / 2} y={h / 2} dominantBaseline="middle" textAnchor="middle"
+              fill="#1f2937" fontSize={8} fontFamily="monospace">
+              {c.componentName}
+            </text>
+          </g>
+        );
+      })}
+    </>
+  );
+
+  return (
+    <>
+      {/* Thumbnail — click to open overlay */}
+      <svg viewBox={viewBox} onClick={() => setOpen(true)}
+        className="w-full rounded-lg border border-gray-200 cursor-zoom-in"
+        style={{ background: "#faf8f4", maxHeight: "700px" }}>
+        {svgContent}
+      </svg>
+
+      {/* Full-screen overlay */}
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/60 overflow-auto" onClick={() => setOpen(false)}>
+          {/* Close button */}
+          <button
+            onClick={() => setOpen(false)}
+            className="fixed top-4 right-4 z-10 w-9 h-9 rounded-full bg-white text-gray-800 text-xl font-bold flex items-center justify-center shadow-lg hover:bg-gray-100"
           >
-            {c.componentName}
-          </text>
-        </g>
-      ))}
-    </svg>
+            ×
+          </button>
+
+          {/* Scrollable canvas — click on background to close, not on the SVG */}
+          <div className="p-8 min-w-fit min-h-fit" onClick={(e) => e.stopPropagation()}>
+            <svg viewBox={viewBox} width={vbWidth} height={vbHeight}
+              style={{ background: "#faf8f4", display: "block", borderRadius: 8 }}>
+              {svgContent}
+            </svg>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -176,8 +205,8 @@ export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
     <main className="container mx-auto px-6 py-8">
       {/* Breadcrumb */}
       <div className="mb-6">
-        <Link to="/library" className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-gray-100">
-          ← Library
+        <Link to="/" className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-gray-100">
+          ← Home
         </Link>
         <h1 className="text-2xl font-bold mt-1">{script.fileName}</h1>
       </div>
