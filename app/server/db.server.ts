@@ -32,7 +32,16 @@ export async function runQuery<T = unknown>(
     console.log(`querying for ${cypher}`)
     const result = await session.run(cypher, params);
     console.log(`Result: ${JSON.stringify(result)}`)
-    return result.records.map((r) => r.toObject() as T);
+    return result.records.map((r) => {
+      const obj = r.toObject();
+      // Convert Neo4j Integer objects ({low, high}) to plain JS numbers
+      for (const key of Object.keys(obj)) {
+        if (neo4j.isInt(obj[key])) {
+          obj[key] = (obj[key] as neo4j.Integer).toNumber();
+        }
+      }
+      return obj as T;
+    });
   } finally {
     await session.close();
   }
