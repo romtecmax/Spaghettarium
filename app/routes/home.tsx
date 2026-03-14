@@ -68,6 +68,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const sortDir = (url.searchParams.get("dir") ?? "asc") as SortDir;
   const activeCategory = url.searchParams.get("category");
   const activeTag = url.searchParams.get("tag");
+  const activePlugin = url.searchParams.get("plugin");
 
   const orderBy = SORT_COLUMNS[sortKey] ?? SORT_COLUMNS.fileName;
   const direction = sortDir === "desc" ? "DESC" : "ASC";
@@ -91,6 +92,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     runQuery<ScriptRow>(`
       MATCH (d:DocumentVersion)
       ${whereStr}
+      ${activePlugin
+        ? "MATCH (fp:Plugin {Name: $plugin})-[:PluginToPluginVer]->(:PluginVersion)-[:PluginVerToDocVer]->(d)"
+        : ""}
       OPTIONAL MATCH (pv:PluginVersion)-[:PluginVerToDocVer]->(d)
       OPTIONAL MATCH (p:Plugin)-[:PluginToPluginVer]->(pv)
       RETURN
@@ -105,7 +109,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         d.ai_flow        AS flow,
         collect(DISTINCT p.Name) AS plugins
       ORDER BY ${orderBy} ${direction}
-    `, queryParams),
+    `, { ...queryParams, ...(activePlugin ? { plugin: activePlugin } : {}) }),
 
     runQuery<CategoryCount>(`
       MATCH (d:DocumentVersion)
@@ -134,7 +138,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   ]);
 
   const stats = counts[0] ?? { scripts: 0, components: 0, plugins: 0 };
-  return { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag, stats };
+  return { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag, activePlugin, stats };
 }
 
 // ─── Action (search) ─────────────────────────────────────────────────────────
@@ -193,12 +197,13 @@ function SortableHeader({
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag, stats } = loaderData;
+  const { scripts, sortKey, sortDir, categories, topTags, activeCategory, activeTag, activePlugin, stats } = loaderData;
   const searchParams = new URLSearchParams();
   if (sortKey !== "fileName") searchParams.set("sort", sortKey);
   if (sortDir !== "asc") searchParams.set("dir", sortDir);
   if (activeCategory) searchParams.set("category", activeCategory);
   if (activeTag) searchParams.set("tag", activeTag);
+  if (activePlugin) searchParams.set("plugin", activePlugin);
 
   const fetcher = useFetcher<typeof action>();
   const searchResults = fetcher.data?.results;
@@ -281,6 +286,18 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Link>
               ))}
           </div>
+
+          {activePlugin && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1 shrink-0">Plugin:</span>
+              <Link
+                to={buildQuery(searchParams, { plugin: null })}
+                className="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-600 text-white whitespace-nowrap"
+              >
+                {activePlugin} ✕
+              </Link>
+            </div>
+          )}
         </div>
       )}
 

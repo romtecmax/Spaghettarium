@@ -86,7 +86,15 @@ export async function loader() {
 
 // ─── Bar Chart Component ─────────────────────────────────────────────────────
 
-function BarChart({ data, colorClass }: { data: CountRow[]; colorClass: string }) {
+function BarChart({
+  data,
+  colorClass,
+  linkTo,
+}: {
+  data: CountRow[];
+  colorClass: string;
+  linkTo?: (label: string) => string;
+}) {
   if (data.length === 0) {
     return <p className="text-sm text-gray-400">No data available.</p>;
   }
@@ -97,9 +105,19 @@ function BarChart({ data, colorClass }: { data: CountRow[]; colorClass: string }
     <div className="space-y-2">
       {data.map((d) => (
         <div key={d.label} className="flex items-center gap-3 text-sm">
-          <span className="w-28 text-right text-gray-600 dark:text-gray-400 truncate" title={d.label}>
-            {d.label}
-          </span>
+          {linkTo ? (
+            <Link
+              to={linkTo(d.label)}
+              className="w-28 text-right text-blue-600 dark:text-blue-400 hover:underline truncate"
+              title={d.label}
+            >
+              {d.label}
+            </Link>
+          ) : (
+            <span className="w-28 text-right text-gray-600 dark:text-gray-400 truncate" title={d.label}>
+              {d.label}
+            </span>
+          )}
           <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full h-5 overflow-hidden">
             <div
               className={`${colorClass} h-full rounded-full transition-all`}
@@ -183,19 +201,19 @@ export default function Analytics({ loaderData }: Route.ComponentProps) {
         {/* Category Distribution */}
         <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-6">
           <h2 className="text-lg font-semibold mb-4">Categories</h2>
-          <BarChart data={categories} colorClass="bg-blue-500" />
+          <BarChart data={categories} colorClass="bg-blue-500" linkTo={(l) => `/?category=${encodeURIComponent(l)}`} />
         </div>
 
         {/* Top Tags */}
         <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-6">
           <h2 className="text-lg font-semibold mb-4">Top Tags</h2>
-          <BarChart data={tags} colorClass="bg-green-500" />
+          <BarChart data={tags} colorClass="bg-green-500" linkTo={(l) => `/?tag=${encodeURIComponent(l)}`} />
         </div>
 
         {/* Plugin Popularity */}
         <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-6">
           <h2 className="text-lg font-semibold mb-4">Plugin Popularity</h2>
-          <BarChart data={plugins} colorClass="bg-purple-500" />
+          <BarChart data={plugins} colorClass="bg-purple-500" linkTo={(l) => `/?plugin=${encodeURIComponent(l)}`} />
         </div>
 
         {/* Confidence Distribution */}
