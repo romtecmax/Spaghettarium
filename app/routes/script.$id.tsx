@@ -144,6 +144,12 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
 
   const compMap = new Map(scaled.map((c) => [c.instanceGuid, c]));
 
+  // Derive inputs (no incoming wires) and outputs (no outgoing wires)
+  const hasIncoming = new Set(wires.map((w) => w.to));
+  const hasOutgoing = new Set(wires.map((w) => w.from));
+  const isInput  = (id: string) => !hasIncoming.has(id) && compMap.has(id);
+  const isOutput = (id: string) => !hasOutgoing.has(id) && compMap.has(id);
+
   const svgContent = (
     <>
       {wires.map((w, i) => {
@@ -161,23 +167,31 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
         const h = isSlider ? COMP_H * 0.3 : isPanel ? COMP_W * (3 / 4) : COMP_H;
         const w = isSlider ? COMP_W * 1.5 : COMP_W;
         const cat = CATEGORY_FILL[c.category ?? ""] ?? { fill: "#9ca3af", stroke: "#6b7280" };
+        const input  = isInput(c.instanceGuid);
+        const output = isOutput(c.instanceGuid);
+        const ioStroke = input ? "#2563eb" : output ? "#dc2626" : null;
         return (
           <g key={c.instanceGuid} transform={`translate(${c.pivotX - w / 2}, ${c.pivotY - h / 2})`}>
             {isSlider ? (
               <>
-                <rect width={w} height={h} rx={2} fill={cat.fill} stroke={cat.stroke} strokeWidth={0.75} />
+                <rect width={w} height={h} rx={2} fill={cat.fill} stroke={ioStroke ?? cat.stroke} strokeWidth={ioStroke ? 2.5 : 0.75} />
                 <rect x={0} width={w * 0.22} height={h} rx={2} fill={cat.stroke} />
                 <rect x={w * 0.22 * 0.6} width={w * 0.22 * 0.4} height={h} fill={cat.stroke} />
               </>
             ) : isPanel ? (
-              <rect width={w} height={h} rx={3} fill="#fde047" stroke="#facc15" strokeWidth={0.75} />
+              <rect width={w} height={h} rx={3} fill="#fde047" stroke={ioStroke ?? "#facc15"} strokeWidth={ioStroke ? 2.5 : 0.75} />
             ) : (
-              <rect width={w} height={h} rx={3} fill={cat.fill} stroke={cat.stroke} strokeWidth={0.75} />
+              <rect width={w} height={h} rx={3} fill={cat.fill} stroke={ioStroke ?? cat.stroke} strokeWidth={ioStroke ? 2.5 : 0.75} />
             )}
             <text x={w / 2} y={h / 2} dominantBaseline="middle" textAnchor="middle"
               fill="#1f2937" fontSize={8} fontFamily="monospace">
               {c.componentName}
             </text>
+            {(input || output) && (
+              <text x={w / 2} y={-5} textAnchor="middle" fill={ioStroke!} fontSize={6} fontFamily="monospace" fontWeight="bold">
+                {input ? "INPUT" : "OUTPUT"}
+              </text>
+            )}
           </g>
         );
       })}
@@ -206,6 +220,15 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
           <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
             <span className="inline-block w-3 h-3 rounded-sm border" style={{ background: "#9ca3af", borderColor: "#6b7280" }} />
             unknown
+          </div>
+          <div className="border-l border-gray-300 dark:border-gray-700 h-3" />
+          <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ border: "2px solid #2563eb" }} />
+            input
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+            <span className="inline-block w-3 h-3 rounded-sm" style={{ border: "2px solid #dc2626" }} />
+            output
           </div>
         </div>
       )}
