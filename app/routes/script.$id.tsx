@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { ChatPanel } from "~/components/ChatPanel";
+import { Spaghettimeter } from "~/components/Spaghettimeter";
 import type { Route } from "./+types/script.$id";
 import { runQuery } from "~/server/db.server";
 
@@ -42,6 +43,10 @@ interface WireEdge {
   to: string;
 }
 
+interface ClusterRow {
+  clusters: number;
+}
+
 // ─── Meta ────────────────────────────────────────────────────────────────────
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -53,7 +58,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export async function loader({ params }: Route.LoaderArgs) {
   const versionId = params.id;
 
-  const [detailRows, pluginRows, componentRows, wireRows] = await Promise.all([
+  const [detailRows, pluginRows, componentRows, wireRows, clusterRows] = await Promise.all([
     runQuery<ScriptDetails>(`
       MATCH (d:DocumentVersion {VersionId: $versionId})
       RETURN
@@ -95,10 +100,17 @@ export async function loader({ params }: Route.LoaderArgs) {
       MATCH (ci1:ComponentInstance {VersionId: $versionId})-[:Wire]->(ci2:ComponentInstance {VersionId: $versionId})
       RETURN ci1.InstanceGuid AS from, ci2.InstanceGuid AS to
     `, { versionId }),
+
+    runQuery<ClusterRow>(`
+      MATCH (d:DocumentVersion {VersionId: $versionId})
+      OPTIONAL MATCH (d)-[:DocVerToDocVer]->(child)
+      RETURN count(DISTINCT child) AS clusters
+    `, { versionId }),
   ]);
 
   const script = detailRows[0] ?? null;
-  return { script, plugins: pluginRows, components: componentRows, wires: wireRows };
+  const clusters = clusterRows[0]?.clusters ?? 0;
+  return { script, plugins: pluginRows, components: componentRows, wires: wireRows, clusters };
 }
 
 // ─── Graph Preview ───────────────────────────────────────────────────────────
@@ -277,7 +289,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
-  const { script, plugins, components, wires } = loaderData;
+  const { script, plugins, components, wires, clusters } = loaderData;
 
   if (!script) {
     return (
@@ -501,8 +513,18 @@ export default function ScriptDetail({ loaderData }: Route.ComponentProps) {
           </div>
         </div>
 
-        {/* ── Right: Chat Interface ── */}
-        <div className="lg:col-span-1">
+        {/* ── Right: Spaghettimeter + Chat ── */}
+        <div className="lg:col-span-1 flex flex-col gap-6 lg:max-h-[calc(100vh-10rem)] lg:sticky lg:top-8">
+          {/* Spaghettimeter */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-4 flex justify-center shrink-0">
+            <Spaghettimeter
+              score={wires.length + plugins.length * 10 + clusters * 5}
+              wires={wires.length}
+              plugins={plugins.length}
+              clusters={clusters}
+            />
+          </div>
+
           <ChatPanel
             title="Ask about this script"
             placeholder="Ask anything about this script or find related ones…"

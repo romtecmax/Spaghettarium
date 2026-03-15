@@ -7,6 +7,7 @@ import { runQuery } from "~/server/db.server";
 interface CountRow {
   label: string;
   count: number;
+  description?: string;
 }
 
 interface ComplexityRow {
@@ -49,7 +50,7 @@ export async function loader() {
 
     runQuery<CountRow>(`
       MATCH (p:Plugin)-[:PluginToPluginVer]->(pv:PluginVersion)-[:PluginVerToDocVer]->(d:DocumentVersion)
-      RETURN p.Name AS label, count(DISTINCT d) AS count
+      RETURN p.Name AS label, count(DISTINCT d) AS count, head(collect(pv.ai_description)) AS description
       ORDER BY count DESC
       LIMIT 15
     `),
@@ -104,7 +105,7 @@ function BarChart({
   return (
     <div className="space-y-2">
       {data.map((d) => (
-        <div key={d.label} className="flex items-center gap-3 text-sm">
+        <div key={d.label} className="group relative flex items-center gap-3 text-sm">
           {linkTo ? (
             <Link
               to={linkTo(d.label)}
@@ -125,6 +126,11 @@ function BarChart({
             />
           </div>
           <span className="w-10 text-gray-500 dark:text-gray-400 text-xs text-right">{d.count}</span>
+          {d.description && (
+            <div className="pointer-events-none absolute left-32 bottom-full mb-1 z-10 hidden group-hover:block w-64 rounded-md bg-gray-900 dark:bg-gray-700 text-white text-xs p-2 shadow-lg">
+              {d.description}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -139,7 +145,7 @@ function ComplexityChart({ data }: { data: ComplexityRow[] }) {
   }
 
   const max = Math.max(...data.map((d) => d.ComplexityScore));
-  const BAR_HEIGHT = 200;
+  const BAR_HEIGHT = 400;
 
   return (
     <div>
