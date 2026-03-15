@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { ChatPanel } from "~/components/ChatPanel";
+import GraphViewer, { type LegendItem } from "~/components/GraphViewer";
 import { Spaghettimeter } from "~/components/Spaghettimeter";
 import type { Route } from "./+types/script.$id";
 import { runQuery } from "~/server/db.server";
@@ -166,6 +167,16 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
   const isInput  = (id: string) => !hasIncoming.has(id) && compMap.has(id);
   const isOutput = (id: string) => !hasOutgoing.has(id) && compMap.has(id);
 
+  const legend: LegendItem[] = [
+    ...activeCategories.sort().map((cat) => {
+      const c = CATEGORY_FILL[cat] ?? CATEGORY_FILL.utility;
+      return { label: cat, fill: c.fill, stroke: c.stroke };
+    }),
+    { label: "unknown", fill: "#9ca3af", stroke: "#6b7280" },
+    { label: "input", fill: "transparent", stroke: "#2563eb", borderOnly: true },
+    { label: "output", fill: "transparent", stroke: "#dc2626", borderOnly: true },
+  ];
+
   const svgContent = (
     <>
       {wires.map((w, i) => {
@@ -250,21 +261,12 @@ function GraphPreview({ components, wires }: { components: ComponentNode[]; wire
       )}
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 overflow-auto" onClick={() => setOpen(false)}>
-          <button
-            onClick={() => setOpen(false)}
-            className="fixed top-4 right-4 z-10 w-9 h-9 rounded-full bg-white text-gray-800 text-xl font-bold flex items-center justify-center shadow-lg hover:bg-gray-100"
-          >
-            x
-          </button>
-
-          <div className="p-8 min-w-fit min-h-fit" onClick={(e) => e.stopPropagation()}>
-            <svg viewBox={viewBox} width={vbWidth} height={vbHeight}
-              style={{ background: "#faf8f4", display: "block", borderRadius: 8 }}>
-              {svgContent}
-            </svg>
-          </div>
-        </div>
+        <GraphViewer
+          svgContent={svgContent}
+          initialViewBox={{ x: minX, y: minY, width: vbWidth, height: vbHeight }}
+          legend={legend}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );
