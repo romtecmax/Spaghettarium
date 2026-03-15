@@ -129,6 +129,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     runQuery<{ scripts: number; components: number; plugins: number }>(`
       MATCH (d:DocumentVersion)
+	  WHERE d.IsCluster IS NULL
       WITH count(d) AS scripts
       OPTIONAL MATCH (ci:ComponentInstance)
       WITH scripts, count(ci) AS components
